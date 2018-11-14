@@ -21,7 +21,7 @@ if (this.mVehicle.isPlayerDriver)
 }
 ```
 
-## AI Controlled Pitstops
+## Macro Management Mod
 ConsoleCommands -> useAIForDrivers
 
 ```C#
