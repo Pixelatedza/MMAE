@@ -27,3 +27,30 @@ ConsoleCommands -> useAIForDrivers
 ```C#
 public static bool useAIForDrivers = true;
 ```
+
+## No Micromanagement mod in SessionStrategy
+```C#
+private void UpdateDrivingStyleAndEngineModes()
+{
+    bool arg_06_0 = this.mUsesAIForStrategy;
+    if (this.mVehicle.pathState.IsInPitlaneArea() || this.mVehicle.timer.hasSeenChequeredFlag)
+    {
+        this.mVehicle.performance.drivingStyle.SetDrivingStyle(global::DrivingStyle.Mode.BackUp);
+        this.mVehicle.performance.fuel.SetEngineMode(global::Fuel.EngineMode.Low, false);
+    }
+    else
+    {
+        this.mVehicle.performance.drivingStyle.SetRacingAIDrivingStyle();
+        this.mVehicle.performance.fuel.SetRacingAIEngineMode();
+    }
+    if (global::Game.instance.sessionManager.isSafetyCarFlag)
+    {
+        this.mVehicle.performance.drivingStyle.SetDrivingStyle(global::DrivingStyle.Mode.BackUp);
+        this.mVehicle.performance.fuel.SetEngineMode(global::Fuel.EngineMode.Low, false);
+    }
+    if (this.mVehicle.car.seriesCurrentParts[1].partCondition.IsOnRed())
+    {
+        this.mVehicle.performance.fuel.SetEngineMode(global::Fuel.EngineMode.Low, false);
+    }
+}
+```
