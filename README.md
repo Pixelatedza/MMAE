@@ -28,6 +28,7 @@ ConsoleCommands -> useAIForDrivers
 public static bool useAIForDrivers = true;
 ```
 
+# Below thanks to shortshifted78 and others
 ## No Micromanagement mod in SessionStrategy
 ```C#
 private void UpdateDrivingStyleAndEngineModes()
@@ -53,4 +54,359 @@ private void UpdateDrivingStyleAndEngineModes()
         this.mVehicle.performance.fuel.SetEngineMode(global::Fuel.EngineMode.Low, false);
     }
 }
+```
+
+## AI Teams Age Limits
+This one will force the AI teams to stick to the age limits set up in your Championships.txt.
+
+TeamAIController -> FindReplacementDriver()
+
+```C#
+private Driver FindReplacementDriver(Driver current_driver, bool has_to_be_better, float better_delta = 0f)
+{
+    long num = (long)((float)this.mTeam.financeController.finance.currentBudget * this.mTeam.aiWeightings.mFinanceDrivers);
+    HQsBuilding_v1 building = this.mTeam.headquarters.GetBuilding(HQsBuildingInfo.Type.ScoutingFacility);
+    int num2 = 0;
+    if (building != null && building.isBuilt)
+    {
+        num2 = building.currentLevel;
+    }
+    this.mScoutableDrivers.Clear();
+    List<Driver> entityList = Game.instance.driverManager.GetEntityList();
+    for (int i = 0; i < entityList.Count; i++)
+    {
+        Driver driver = entityList[i];
+        if (this.IsScoutable(driver) && !driver.Equals(current_driver) && this.PersonNotAlreadyApproached(driver) && (!driver.IsFreeAgent() || !this.mTeam.championship.InPreseason() || Game.instance.time.now.Month >= 6 || driver.careerHistory.previousTeam == null || !driver.careerHistory.previousTeam.Equals(this.mTeam)) && (driver.GetDriverStats().scoutingLevelRequired == 0 || num2 > driver.GetDriverStats().scoutingLevelRequired) && driver.GetInterestedToTalkReaction(this.mTeam) == Person.InterestedToTalkResponseType.InterestedToTalk && (driver.IsFreeAgent() || num > (long)driver.contract.GetContractTerminationCost()) && this.mTeam.championship.historyMinStartAge <= driver.GetAge() && this.mTeam.championship.historyMaxStartAge >= driver.GetAge())
+        {
+            this.mScoutableDrivers.Add(driver);
+        }
+    } 
+ if (this.mScoutableDrivers.Count <= 1)
+    {
+        return null;
+    }
+    this.mScoutableDrivers.Sort((Driver x, Driver y) => y.GetStatsForAITeamComparison(this.mTeam).CompareTo(x.GetStatsForAITeamComparison(this.mTeam)));
+    if (!has_to_be_better)
+    {
+        return this.mScoutableDrivers[0];
+    }
+    if (this.IsStarRatingThisMuchBetter(this.mScoutableDrivers[0], current_driver, better_delta))
+    {
+        return this.mScoutableDrivers[0];
+    }
+    return null;
+}
+```
+
+## More Accurate Simulation Sessions
+It will tweak the simulation settings so that more accurate results are given. This was not a huge deal if you played the vanilla version, but if you are playing with a real life mod and are seeing low quality teams winning simmed races, this will give much more accurate results in all simmed races.
+
+SimulationUtility -> GetSortedDriverData()
+```C#
+private List<SimulationUtility.DriverData> GetSortedDriverData(Championship inChampionship, Circuit inCircuit)
+{
+    List<Car> list = new List<Car>();
+    if (inChampionship.IsConcurrentChampionship())
+    {
+        List<Championship> concurrentChampionships = inChampionship.GetConcurrentChampionships();
+        for (int i = 0; i < concurrentChampionships.Count; i++)
+        {
+            list.AddRange(CarManager.GetOverralBestCarsOfChampionship(concurrentChampionships[i]));
+        }
+    }
+    else
+    {
+        list = CarManager.GetOverralBestCarsOfChampionship(inChampionship);
+    }
+    List<Championship> championshipsByOrder = Game.instance.championshipManager.GetChampionshipsByOrder(inChampionship.series);
+    float maximumCarStatValue = championshipsByOrder[0].rules.GetMaximumCarStatValue();
+    float minimumCarStatValue = championshipsByOrder[championshipsByOrder.Count - 1].rules.GetMinimumCarStatValue();
+    float bestPossibleLapTime = inCircuit.bestPossibleLapTime;
+    float worstPossibleLapTime = inCircuit.worstPossibleLapTime;
+    int count = list.Count;
+    float num = 0f;
+    float num2 = 1000f;
+    List<SimulationUtility.DriverData> list2 = new List<SimulationUtility.DriverData>(count);
+    float num3 = 0f;
+    for (int j = 0; j < count; j++)
+    {
+        Car car = list[j];
+        float num4 = ((float)car.GetStats().statsTotal - minimumCarStatValue) / (maximumCarStatValue - minimumCarStatValue);
+        float num5 = ((float)car.GetStatsForTrack(inCircuit.trackStatsCharacteristics).statsTotal - minimumCarStatValue) / (maximumCarStatValue - minimumCarStatValue);
+        Driver driver = (!car.carManager.team.IsDriverSelectionForSessionComplete()) ? car.carManager.team.GetDriverForCar(car.identifier) : car.carManager.team.GetSelectedVehicledDriver(car.identifier);
+        float unitAverage = driver.GetDriverStats().GetUnitAverage();
+        SimulationUtility.DriverData driverData = new SimulationUtility.DriverData();
+        driverData.driver = driver;
+        driverData.driverQuality01 = unitAverage;
+        driverData.car = car;
+        driverData.carQuality01 = num4 * 0.75f + num5 * 0.25f;
+        driverData.driverForm = this.GetDriverForm(driver);
+        if (num3 == 0f)
+        {
+            if (driverData.carQuality01 < 1f)
+            {
+                num3 = 2f;
+            }
+            else if (driverData.carQuality01 > 4f)
+            {
+                num3 = 0.5f;
+            }
+            else
+            {
+                num3 = 1f;
+            }
+        }
+        driverData.carQuality01 *= num3;
+        float num6 = driverData.driverQuality01 + driverData.carQuality01;
+        if (num6 > num)
+        {
+            num = num6;
+        }
+        if (num6 < num2)
+        {
+            num2 = num6;
+        }
+        global::Debug.Assert(driverData.driverQuality01 >= 0f && driverData.driverQuality01 <= 1f, "Driver quality is not 01 (normalized)");
+        list2.Add(driverData);
+    }
+    this.SetOverallQualityBasedOnRules(inChampionship, ref list2);
+    List<SimulationUtility.DriverData> list3 = new List<SimulationUtility.DriverData>(list2.Count);
+    while (list2.Count > 0)
+    {
+        SimulationUtility.DriverData driverData2 = null;
+        count = list2.Count;
+        for (int k = 0; k < count; k++)
+        {
+            SimulationUtility.DriverData driverData3 = list2[k];
+            if (driverData2 == null || driverData2.overallQuality01 < driverData3.overallQuality01)
+            {
+                driverData2 = driverData3;
+            }
+        }
+        list2.Remove(driverData2);
+        list3.Add(driverData2);
+        float num7 = driverData2.driverQuality01 + driverData2.carQuality01;
+        num7 -= num2;
+        num7 /= num - num2;
+        if (num7 > 1f)
+        {
+            num7 = 1f;
+        }
+        else if (num7 < 0f)
+        {
+            num7 = 0f;
+        }
+        float num8 = Mathf.Lerp(0.7f, 1f, num7);
+        num8 += RandomUtility.GetRandom(-0.06f, 0.06f);
+        if (num8 > 1f)
+        {
+            num8 = 1f;
+        }
+        float averageLap = Mathf.Lerp(worstPossibleLapTime, bestPossibleLapTime, num8);
+        driverData2.averageLap = averageLap;
+    }
+    return list3;
+}
+```
+
+## Automatic Low Fuel and Tire Saving Mode
+This one is good for those that are playing with full human control of your drivers. It will instantly kick your drivers into fuel and tire saving mode as soon as they hit pit lane or if a safety car is called out. The down side is that after pitting or when the yellow ends, they will go to semi random push and engine levels.
+
+SessionStrategy -> UpdateDrivingStyleAndEngineModes()
+
+```C#
+private void UpdateDrivingStyleAndEngineModes()
+{
+    this.mUsesAIForStrategy = this.mVehicle.driver.personalityTraitController.UsesAIForStrategy(this.mVehicle);
+    if (this.mUsesAIForStrategy || !this.mVehicle.isPlayerDriver || Game.instance.sessionManager.isUsingAIForPlayerDrivers)
+    {
+        if (this.mVehicle.pathState.IsInPitlaneArea() || this.mVehicle.timer.hasSeenChequeredFlag)
+        {
+            this.mVehicle.performance.drivingStyle.SetDrivingStyle(DrivingStyle.Mode.BackUp);
+            this.mVehicle.performance.fuel.SetEngineMode(Fuel.EngineMode.Low, false);
+        }
+        else
+        {
+            this.mVehicle.performance.drivingStyle.SetRacingAIDrivingStyle();
+            this.mVehicle.performance.fuel.SetRacingAIEngineMode();
+        }
+        if (Game.instance.sessionManager.isSafetyCarFlag)
+        {
+            this.mVehicle.performance.drivingStyle.SetDrivingStyle(DrivingStyle.Mode.BackUp);
+            this.mVehicle.performance.fuel.SetEngineMode(Fuel.EngineMode.Low, false);
+        }
+        if (this.mVehicle.car.seriesCurrentParts[1].partCondition.IsOnRed())
+        {
+            this.mVehicle.performance.fuel.SetEngineMode(Fuel.EngineMode.Low, false);
+        }
+    }
+    else
+    {
+        if (this.mVehicle.pathState.IsInPitlaneArea() || this.mVehicle.timer.hasSeenChequeredFlag)
+        {
+            this.mVehicle.performance.drivingStyle.SetDrivingStyle(DrivingStyle.Mode.BackUp);
+            this.mVehicle.performance.fuel.SetEngineMode(Fuel.EngineMode.Low, false);
+        }
+        if (this.mVehicle.pathController.currentPathType == PathController.PathType.PitlaneExit)
+                {
+                    PathController.Path path = this.mVehicle.pathController.GetPath(PathController.PathType.PitlaneExit);
+                    if (path.data.gates.Count - (path.nextGateIdAccessor + 1) < 5)
+                    {
+                            this.mVehicle.performance.drivingStyle.SetRacingAIDrivingStyle();
+                            this.mVehicle.performance.fuel.SetRacingAIEngineMode();
+                    }
+                }
+        if (Game.instance.sessionManager.isSafetyCarFlag)
+        {
+            this.mVehicle.performance.fuel.SetEngineMode(Fuel.EngineMode.Low, false);
+        }
+    }
+}
+```
+
+## Season Breakthroughs
+This one will help control any start of the season breakthroughs. You will need to find these lines in the code and adjust. If you have FlamingRed's mod (or shortshifted78's), there will be two sets of these numbers, and you should adjust both
+
+CarPartDesign -> SetSeasonStartingStats()
+
+```C#
+IsPlayersTeam - random < 0.01
+!this.mTeam.IsPlayersTeam - (minor) random < 0.04
+!this.mTeam.IsPlayersTeam - (major) random < 0.02
+```
+
+## AI Minimum Stripdown
+This next one should be for the AI to determine the minimum they will strip their car down to
+
+CarPartStats
+```C#
+weightStrippedReliabilityMin = 0.6f
+```
+
+## Saftey Car Count
+Crashes! this is a big one. Now if you are playing with a series that doesn't have long races, you are welcome to leave the safety car count alone. I, (shortshifted78), bumped my numbers up because of the endurance series. I also tried to look at historical data for crashes in the endurance series. With the numbers below you are guaranteed to have 1 crash at some point in the race, and heavy rain should add at least 1 more if the game has decided on a number that results in fewer than 4 crashes.
+
+CrashDirector -> OnSessionStarting()
+```C#
+case PrefGameRaceLength.Type.Short:
+    this.mRealSafetyCarCount = 2;
+case PrefGameRaceLength.Type.Medium:
+    this.mRealSafetyCarCount = 4;
+if (random > 0.98f)
+    i = 6;
+else if (random > 0.95f)
+    i = 5;
+else if (random > 0.90f)
+    i = 4;
+else if (random > 0.50f)
+    i = 3;
+else if (random > 0.10f)
+    i = 2;
+else
+    i = 1;
+if (this.mSessionManager.currentSessionWeather.GetAverageWeather().rainType >= Weather.RainType.Heavy && i < 4)
+    i += RandomUtility.GetRandom(1, 3);
+```
+
+## Corner Cutting Fix
+Now what about cutting corners? in the coding? no! the cars on track! Apparently the length of the season dictates the number of corner cuts you can have in a season. So since the lower tiers have fewer races (F3 has just 8 races) and are supposed to be populated with young drivers moving up in the ranks, they might be more prone to cutting corners due to inexperience. So for the shortest season 20 corner cuts max. Since my endurance series is in the 9-10 race range, but the races are long, there is a decent chance just due to the sheer number of laps in a race. As the tiers go up, the seasons get longer and in theory the drivers get better so the cuts per race go down.
+
+CutCornerSeasonDirector -> OnSeasonStart()
+
+```C#
+int inMax = 20;
+if (inChampionship.calendar.Count >= 16)
+{
+    inMax = 16;
+}
+else if (inChampionship.calendar.Count >= 12)
+{
+    inMax = 18;
+}
+else if (inChampionship.calendar.Count >= 9)
+{
+    inMax = 22;
+}
+int i = RandomUtility.GetRandomInc(5, inMax);
+```
+
+To finish off the corner cuts, and when they can happen in the race...
+
+```C#
+float t = 1f - inVehicle.driver.GetDriverStats().focus / 20f;
+float num = Mathf.Lerp(0.9f, 2f, t);
+SessionWeatherDetails currentSessionWeather = Game.instance.sessionManager.currentSessionWeather;
+bool flag = Game.instance.sessionManager.flag == SessionManager.Flag.Green;
+bool flag2 = currentSessionWeather.GetNormalizedTrackWater() > 0.4f && currentSessionWeather.GetNormalizedRain() > 0.2f;
+bool flag3 = inVehicle.timer.gapToAhead > 0.1f && inVehicle.timer.gapToAhead < num;
+bool flag4 = (inVehicle.timer.gapToBehind > 0.1f && inVehicle.timer.gapToBehind < num) || flag3;
+return flag && (flag4 || flag2);
+```
+
+## Regen Drivers
+To limit them in their marketability I have this to limit max starting marketability to 50
+
+DriverManager -> GenerateRandomStatsData()
+
+```C#
+driverStats.marketability = ((inType != RegenManager.RegenType.Replacement) ? ((float)RandomUtility.GetRandom(0, inEntry.GetIntValue("Marketability")) / 200f
+```
+
+## Higher Spec Part Performance and Fewer Tweets
+GameStatsConstants
+```C#
+averageCharactersReadPerSecond = 18f
+newSeasonMaxPartCap = 550
+partResetMaxBonus = 200f
+initialMaxReliabilityValue = 0.63f + RandomUtility.GetRandom(0f, 0.12f)
+specPartValues = new int[] //Set to be be 40percent of series reset value
+    1000, //F1 or WMC
+    600,  //F2 or APS
+    240,  //F3 or ERS
+    680,  //tier 1 GT
+    320,  //tier 2 GT
+    800,  //WEC LMP1
+    480,  //WEC LMP2
+    100,  //who knows
+    100
+daysRecoveredFromSittingOut = 5
+scrutineeringChance = 10f
+maxConditionTimeToFix = 144f //this is 6 days but teams should not take this long
+liveryEditCost = 50000L
+lastChampionshipEventWeek = 47
+averageMilesPerLap = 2.95  //this value is based on just tracks in my True Endurance mod
+frontWingRate = 0.1f;
+rearWingRate = 0.2f;
+engineRate = 0.8f;
+brakesRate = 0.6f;
+suspensionRate = 0.6f;
+gearBoxRate = 0.7f;
+replacementPeopleCount = 25  //if you like having a lot of options for regens as the years go on you can increase this number
+minTweetValue = 3
+maxTweetValue = 5
+```
+
+## Higher Simulation Speeds
+The top set of numbers will do that for you.
+
+GameTimer
+```C#
+public static float[] skipSimSpeed = new float[]
+    0f,
+    20f,
+    40f,
+    90f
+public static float[] skipSimEventSpeeds = new float[]
+    0f,
+    1.5f,
+    3.25f,
+    5.75f
+```
+
+## Lockup Fix
+If you noticed that lockups only seemed to happen at certain spots of certain tracks its because the coding was set to require a straight of at least 400m (yd?) before having a chance. This meant that lockups could only really happen at 1 or 2 corners at just a handful of tracks. This next line of code opens up many more corners and pretty much every track. The down side is that you will get many lock ups happening early in the race if you retain all the original lockup coding.
+
+PathData -> CalculateLockUpZones()
+```C#
+float num = 150
 ```
