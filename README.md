@@ -4,6 +4,8 @@
 
 The following will show you what to change in the *Assembly-CSharp.dll* file. The file can be edited using [dnSpy](https://github.com/0xd4d/dnSpy). You can just scroll down to the releases section, it will lead you to the download page.
 
+> Note! You need the other DLLs from the *Assembly-CSharp.dll* folder to compile the edited code.
+
 When your at the place you want to change the code, simply right click and say edit method (C#) or edit class (C#). They will both open an editor where you can make the changes. Once the changes are made, click the compile button and hope everything compiles happily.
 
 ## Perfect Setup
