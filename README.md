@@ -58,12 +58,6 @@ private void UpdateDrivingStyleAndEngineModes()
 }
 ```
 
-## AI Teams Age Limits
-The creator of this section of code has politle requested it be taken down 
-
-## More Accurate Simulation Sessions
-The creator of this section of code has politle requested it be taken down
-
 ## Automatic Low Fuel and Tire Saving Mode
 This one is good for those that are playing with full human control of your drivers. It will instantly kick your drivers into fuel and tire saving mode as soon as they hit pit lane or if a safety car is called out. The down side is that after pitting or when the yellow ends, they will go to semi random push and engine levels.
 
