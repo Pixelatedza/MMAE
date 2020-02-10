@@ -259,3 +259,22 @@ PathData -> CalculateLockUpZones()
 ```C#
 float num = 150
 ```
+AILockUpBehaviour ->OnEnter
+```C#
+this.mLockUpDuration = (float)RandomUtility.GetRandom(1, 3)
+```
+AILockUpBehaviour ->OnExit
+```C#
+float random = RandomUtility.GetRandom(0.03f, 0.09f)
+```
+TyreLockUpDirector IsTyreLockUpViable
+```C#
+bool flag = Game.instance.sessionManager.flag == SessionManager.Flag.Chequered;
+		bool flag2 = inVehicle.timer.gapToAhead < 3.6f - inVehicle.driver.GetDriverStats().braking / 6f;
+		bool flag3 = Game.instance.sessionManager.currentSessionWeather.GetNormalizedTrackWater() > inVehicle.driver.GetDriverStats().adaptability / 21f && RandomUtility.GetRandom01() < 0.5f;
+		bool flag4 = Game.instance.sessionManager.currentSessionWeather.GetNormalizedTrackRubber() < (20.4f - inVehicle.driver.GetDriverStats().cornering) / 21f && RandomUtility.GetRandom01() < 0.5f;
+		bool flag5 = Game.instance.sessionManager.GetNormalizedSessionTime() > inVehicle.driver.GetDriverStats().fitness / 22f;
+		return inVehicle.speed <= GameUtility.MilesPerHourToMetersPerSecond(55f) && !isTutorialActiveInCurrentGameState && !inVehicle.behaviourManager.isOutOfRace && !flag && (flag2 & (flag3 || flag4 || flag5)) && inVehicle.sessionEvents.IsReadyTo(SessionEvents.EventType.LockUp);
+
+float mFrequency = 45f
+```
